@@ -2,14 +2,14 @@
 
 Fast, resumable HTTP(S) download manager with a Textual TUI.
 
-- **Fast** — multi-connection chunked downloads (parallel HTTP `Range` requests),
+- **Fast**: multi-connection chunked downloads (parallel HTTP `Range` requests),
   HTTP/2 connection reuse via `httpx`.
-- **Resumable (torrent-like)** — per-chunk state in a `<file>.part.json` sidecar.
-  Crash, kill it, pull the plug — re-add the URL and it continues, skipping every
+- **Resumable (torrent-like)**: per-chunk state in a `<file>.part.json` sidecar.
+  Crash, kill it, pull the plug, re-add the URL and it continues, skipping every
   chunk already on disk. No re-downloading completed bytes.
-- **Safe** — size check always; SHA256 check when a digest is known. Corrupt results
+- **Safe**: size check always; SHA256 check when a digest is known. Corrupt results
   are flagged, not silently kept.
-- **Queue + live TUI** — paste many URLs, download several at once, watch progress,
+- **Queue + live TUI**: paste many URLs, download several at once, watch progress,
   speed and ETA per download.
 
 ## Install
