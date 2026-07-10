@@ -1,0 +1,19 @@
+[project]
+name = "http-downloader"
+version = "0.1.0"
+description = "Fast, resumable HTTP download manager with a Textual TUI"
+requires-python = ">=3.11"
+dependencies = [
+    "httpx[http2]>=0.27",
+    "textual>=0.60",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "pytest-asyncio>=0.23"]
+
+[project.scripts]
+http-downloader = "app:main"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
