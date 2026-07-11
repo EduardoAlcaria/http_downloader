@@ -15,15 +15,34 @@ import httpx
 from .downloader import Download, Status
 
 
+# Browser UA so auth'd endpoints (Google, etc.) don't serve a bot/login page.
+DEFAULT_UA = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) "
+    "Gecko/20100101 Firefox/152.0"
+)
+
+
 class DownloadQueue:
-    def __init__(self, dest_dir: str, max_parallel: int = 3) -> None:
+    def __init__(
+        self,
+        dest_dir: str,
+        max_parallel: int = 3,
+        *,
+        headers: dict | None = None,
+        cookies=None,
+    ) -> None:
         self.dest_dir = dest_dir
         self.downloads: list[Download] = []
         self._sem = asyncio.Semaphore(max_parallel)
+        merged_headers = {"User-Agent": DEFAULT_UA}
+        if headers:
+            merged_headers.update(headers)
         self._client = httpx.AsyncClient(
             http2=True,
             timeout=httpx.Timeout(30.0, connect=10.0),
             limits=httpx.Limits(max_connections=max_parallel * 16),
+            headers=merged_headers,
+            cookies=cookies,
         )
         self._tasks: set[asyncio.Task] = set()
 
