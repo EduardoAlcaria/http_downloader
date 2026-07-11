@@ -61,8 +61,14 @@ class DownloaderApp(App):
         yield DataTable(id="table", cursor_type="row")
         yield Footer()
 
+    dest_dir = DEST_DIR
+    auth_headers: dict | None = None
+    auth_cookies = None
+
     def on_mount(self) -> None:
-        self.queue = DownloadQueue(DEST_DIR)
+        self.queue = DownloadQueue(
+            self.dest_dir, headers=self.auth_headers, cookies=self.auth_cookies
+        )
         table = self.query_one(DataTable)
         table.add_columns("File", "Size", "%", "Speed", "ETA", "Status")
         # per-download sampling state for speed: idx -> (bytes, monotonic)
@@ -135,14 +141,54 @@ class DownloaderApp(App):
         self.exit()
 
 
+def load_browser_cookies(browser: str):
+    """Read auth cookies from a local browser profile via browser_cookie3."""
+    try:
+        import browser_cookie3
+    except ImportError:
+        sys.exit("--browser needs browser_cookie3: pip install browser_cookie3")
+    loader = getattr(browser_cookie3, browser, None)
+    if loader is None:
+        sys.exit(f"unknown browser '{browser}' (try: firefox, chrome, edge)")
+    return loader()
+
+
+def parse_args(argv: list[str]):
+    import argparse
+
+    p = argparse.ArgumentParser(prog="http-downloader")
+    p.add_argument("urls", nargs="*", help="URLs to download (omit for TUI)")
+    p.add_argument("--dest", default=DEST_DIR, help="output dir (default ./downloads)")
+    p.add_argument("--cookie", help='raw Cookie header, e.g. "SID=...; HSID=..."')
+    p.add_argument("--header", action="append", default=[], metavar="K:V",
+                   help="extra request header (repeatable)")
+    p.add_argument("--browser", help="read cookies from this browser (firefox/chrome/edge)")
+    return p.parse_args(argv)
+
+
+def build_auth(args):
+    """Return (headers dict, cookies) from parsed CLI auth flags."""
+    headers = {}
+    if args.cookie:
+        headers["Cookie"] = args.cookie
+    for h in args.header:
+        k, _, v = h.partition(":")
+        headers[k.strip()] = v.strip()
+    cookies = load_browser_cookies(args.browser) if args.browser else None
+    return headers, cookies
+
+
 def main() -> None:
-    if len(sys.argv) > 1:
-        # Headless one-shot mode: `python app.py <url> [url...]` for quick use/CI.
+    args = parse_args(sys.argv[1:])
+    headers, cookies = build_auth(args)
+
+    if args.urls:
+        # Headless one-shot mode for quick use / CI.
         import asyncio
 
         async def _run() -> None:
-            q = DownloadQueue(DEST_DIR)
-            for url in sys.argv[1:]:
+            q = DownloadQueue(args.dest, headers=headers, cookies=cookies)
+            for url in args.urls:
                 q.add(url)
             while any(d.status not in (Status.DONE, Status.ERROR) for d in q.downloads):
                 await asyncio.sleep(0.3)
@@ -152,7 +198,11 @@ def main() -> None:
 
         asyncio.run(_run())
     else:
-        DownloaderApp().run()
+        app = DownloaderApp()
+        app.dest_dir = args.dest
+        app.auth_headers = headers
+        app.auth_cookies = cookies
+        app.run()
 
 
 if __name__ == "__main__":
