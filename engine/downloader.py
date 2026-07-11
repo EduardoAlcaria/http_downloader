@@ -160,6 +160,7 @@ class Download:
         headers = {"Range": "bytes=0-0"}
         r = await client.get(self.url, headers=headers, follow_redirects=True)
         r.raise_for_status()
+        self._guard_login_page(r)
         etag = r.headers.get("ETag")
         filename = _filename_from(str(r.url), r.headers.get("Content-Disposition"))
         cr = r.headers.get("Content-Range")
@@ -169,6 +170,24 @@ class Download:
         # No range support: size may be unknown (chunked transfer) -> -1.
         total = int(r.headers.get("Content-Length", -1))
         return (total if total > 0 else -1), False, etag, filename
+
+    @staticmethod
+    def _guard_login_page(r: httpx.Response) -> None:
+        """Fail loudly when a server returns an HTML login/consent page.
+
+        Auth-gated links (Google Takeout, etc.) redirect a cookieless client to a
+        sign-in page. Without this, that HTML would be saved as a 'successful'
+        download. An HTML body with no attachment disposition is never a file we
+        were asked to fetch.
+        """
+        ctype = r.headers.get("Content-Type", "").lower()
+        disp = r.headers.get("Content-Disposition", "").lower()
+        if ctype.startswith("text/html") and "attachment" not in disp:
+            host = r.url.host
+            raise httpx.HTTPError(
+                f"server returned an HTML page from {host}, not a file "
+                f"(authentication required, or the link expired)"
+            )
 
     def _preallocate(self) -> None:
         if self.total > 0 and self._state and self._state.supports_range:
