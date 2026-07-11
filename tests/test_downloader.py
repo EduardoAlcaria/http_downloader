@@ -29,6 +29,23 @@ async def test_chunked_download_is_byte_identical(tmp_path):
         assert not os.path.exists(dl.part + ".json")
 
 
+def test_guard_rejects_login_html():
+    req = httpx.Request("GET", "https://accounts.google.com/v3/signin/challenge/pwd")
+    resp = httpx.Response(200, headers={"Content-Type": "text/html; charset=utf-8"}, request=req)
+    with pytest.raises(httpx.HTTPError, match="not a file"):
+        Download._guard_login_page(resp)
+
+
+def test_guard_allows_html_attachment():
+    req = httpx.Request("GET", "https://example.com/page.html")
+    resp = httpx.Response(
+        200,
+        headers={"Content-Type": "text/html", "Content-Disposition": "attachment; filename=page.html"},
+        request=req,
+    )
+    Download._guard_login_page(resp)  # no raise: explicitly an attachment
+
+
 @pytest.mark.asyncio
 async def test_single_stream_fallback(tmp_path):
     with serve(size=500_000, supports_range=False) as (url, blob):
