@@ -153,6 +153,44 @@ def load_browser_cookies(browser: str):
     return loader()
 
 
+def parse_curl(path: str):
+    """Parse a browser 'Copy as cURL' command from a file.
+
+    Returns (url, headers). Captures every -H/--header and -b/--cookie so the exact
+    authenticated browser request (cookies, rapt token, UA) is replayed verbatim.
+    This is the reliable path for auth-gated downloads (Google Takeout, etc.) where
+    scraping the cookie store misses the live session.
+    """
+    import shlex
+
+    with open(path, encoding="utf-8") as fh:
+        text = fh.read()
+    # Firefox emits line continuations; normalize them before tokenizing.
+    text = text.replace("\\\n", " ").replace("^\n", " ").strip()
+    tokens = shlex.split(text)
+
+    url = None
+    headers: dict[str, str] = {}
+    i = 0
+    while i < len(tokens):
+        t = tokens[i]
+        if t in ("-H", "--header") and i + 1 < len(tokens):
+            k, _, v = tokens[i + 1].partition(":")
+            headers[k.strip()] = v.strip()
+            i += 2
+        elif t in ("-b", "--cookie") and i + 1 < len(tokens):
+            headers["Cookie"] = tokens[i + 1]
+            i += 2
+        elif t.startswith("http"):
+            url = t
+            i += 1
+        else:
+            i += 1
+    if not url:
+        sys.exit(f"no URL found in cURL file {path}")
+    return url, headers
+
+
 def parse_args(argv: list[str]):
     import argparse
 
@@ -163,6 +201,8 @@ def parse_args(argv: list[str]):
     p.add_argument("--header", action="append", default=[], metavar="K:V",
                    help="extra request header (repeatable)")
     p.add_argument("--browser", help="read cookies from this browser (firefox/chrome/edge)")
+    p.add_argument("--curl", metavar="FILE",
+                   help="replay a browser 'Copy as cURL' saved to FILE (best for auth'd links)")
     return p.parse_args(argv)
 
 
@@ -181,6 +221,12 @@ def build_auth(args):
 def main() -> None:
     args = parse_args(sys.argv[1:])
     headers, cookies = build_auth(args)
+
+    if args.curl:
+        curl_url, curl_headers = parse_curl(args.curl)
+        curl_headers.update(headers)  # explicit --header/--cookie still win
+        headers = curl_headers
+        args.urls = [curl_url] + list(args.urls)
 
     if args.urls:
         # Headless one-shot mode for quick use / CI.
