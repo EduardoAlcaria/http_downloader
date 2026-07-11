@@ -150,7 +150,9 @@ class Download:
             supports_range = r.headers.get("Accept-Ranges", "").lower() == "bytes"
             etag = r.headers.get("ETag")
             filename = _filename_from(str(r.url), r.headers.get("Content-Disposition"))
-            if total >= 0:
+            # Content-Length 0 from HEAD is unreliable (some endpoints lie);
+            # fall through to a ranged GET to learn the real size.
+            if total > 0:
                 return total, supports_range, etag, filename
         except httpx.HTTPError:
             pass
@@ -164,8 +166,9 @@ class Download:
         if r.status_code == 206 and cr and "/" in cr:
             total = int(cr.rsplit("/", 1)[-1])
             return total, True, etag, filename
+        # No range support: size may be unknown (chunked transfer) -> -1.
         total = int(r.headers.get("Content-Length", -1))
-        return total, False, etag, filename
+        return (total if total > 0 else -1), False, etag, filename
 
     def _preallocate(self) -> None:
         if self.total > 0 and self._state and self._state.supports_range:
